@@ -5,17 +5,53 @@ error_reporting(E_ALL);
 
 $dispositivos = [
     [
-        'id' => 'luz_01',
-        'nombre' => 'Luz uno',
-        'ip' => '192.168.1.50',
+        'id' => 'rele_01_0',
+        'nombre' => 'Relé uno canal 0',
+        'ip' => '192.168.1.79',
         'canal' => 0
     ],
     [
-        'id' => 'luz_02',
-        'nombre' => 'Luz dos',
-        'ip' => '192.168.1.51',
+        'id' => 'rele_01_1',
+        'nombre' => 'Relé uno canal 1',
+        'ip' => '192.168.1.79',
+        'canal' => 1
+    ],
+    [
+        'id' => 'rele_01_2',
+        'nombre' => 'Relé uno canal 2',
+        'ip' => '192.168.1.79',
+        'canal' => 2
+    ],
+    [
+        'id' => 'rele_01_3',
+        'nombre' => 'Relé uno canal 3',
+        'ip' => '192.168.1.79',
+        'canal' => 3
+    ],
+    [
+        'id' => 'rele_02_0',
+        'nombre' => 'Relé dos canal 0',
+        'ip' => '192.168.1.80',
         'canal' => 0
-    ]
+    ],
+    [
+        'id' => 'rele_02_1',
+        'nombre' => 'Relé dos canal 1',
+        'ip' => '192.168.1.80',
+        'canal' => 1
+    ],
+    [
+        'id' => 'rele_02_2',
+        'nombre' => 'Relé dos canal 2',
+        'ip' => '192.168.1.80',
+        'canal' => 2
+    ],
+    [
+        'id' => 'rele_02_3',
+        'nombre' => 'Relé dos canal 3',
+        'ip' => '192.168.1.80',
+        'canal' => 3
+    ],
 ];
 
 function llamadaShellyRpc($ip, $metodo, $params = [])
