@@ -4,41 +4,41 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
 /**
- * Configuración de dispositivos Shelly en la instalación.
- * Relé uno (192.168.1.79): Dispositivo de 4 canales controlado por este panel simplificado.
- * Relé dos (192.168.1.80): Segundo dispositivo de 4 canales del sistema.
+ * Configuración de dispositivos Shelly
  */
 $configuracion = [
     'rele_uno' => [
-        'id' => 'rele_01',
-        'nombre' => 'Relé Uno',
-        'ip' => '192.168.1.79',
+        'id'      => 'rele_01',
+        'nombre'  => 'Relé Uno',
+        'ip'      => '192.168.1.79',
         'canales' => [0, 1, 2, 3]
     ],
     'rele_dos' => [
-        'id' => 'rele_02',
-        'nombre' => 'Relé Dos',
-        'ip' => '192.168.1.80',
+        'id'      => 'rele_02',
+        'nombre'  => 'Relé Dos',
+        'ip'      => '192.168.1.80',
         'canales' => [0, 1, 2, 3]
     ]
 ];
 
-// Relé objetivo de este panel simplificado
+// Relé gestionado por este panel simplificado
 $releActivo = $configuracion['rele_uno'];
 
 /**
- * Realiza una llamada HTTP RPC a un dispositivo Shelly Gen2+.
+ * Realiza una llamada HTTP RPC a un dispositivo Shelly Gen2+
  */
-function llamadaShellyRpc($ip, $metodo, $params = [])
+function llamadaShellyRpc(string $ip, string $metodo, array $params = []): array
 {
     $url = "http://{$ip}/rpc/{$metodo}";
     if (!empty($params)) {
         $url .= '?' . http_build_query($params);
     }
     $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 3,
+        CURLOPT_CONNECTTIMEOUT => 2
+    ]);
     $respuesta = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
@@ -47,136 +47,58 @@ function llamadaShellyRpc($ip, $metodo, $params = [])
     if ($error || $httpCode !== 200) {
         return ['error' => true, 'mensaje' => $error ?: "HTTP $httpCode"];
     }
-    $decodificado = json_decode($respuesta, true);
-    if (!is_array($decodificado)) {
-        return ['error' => true, 'mensaje' => 'Respuesta no válida del dispositivo'];
-    }
-    return $decodificado;
+    $data = json_decode($respuesta, true);
+    return is_array($data) ? $data : ['error' => true, 'mensaje' => 'Respuesta no válida'];
 }
 
 /**
- * Obtiene el estado actual de los canales de un relé.
- * Utiliza Shelly.GetStatus para consultar todos los canales en una única petición rápida,
- * con fallback a Switch.GetStatus individual si fuese necesario.
+ * Consulta el estado y telemetría de los 4 canales de Relé Uno
  */
-function obtenerEstadoRele($ip, array $canales)
+function obtenerEstadoRele(string $ip, array $canales): array
 {
-    $resGlobal = llamadaShellyRpc($ip, 'Shelly.GetStatus');
+    $res = llamadaShellyRpc($ip, 'Shelly.GetStatus');
+    if (!empty($res['error'])) {
+        return ['error' => true, 'mensaje' => $res['mensaje'] ?? 'Dispositivo desconectado'];
+    }
 
     $canalesEstado = [];
     $algunoEncendido = false;
-    $todosEncendidos = true;
     $potenciaTotal = 0.0;
-    $voltajePromedio = 0.0;
-    $voltajesValidos = 0;
+    $voltajes = [];
 
-    if (!isset($resGlobal['error'])) {
-        foreach ($canales as $c) {
-            $key = "switch:{$c}";
-            $salida = isset($resGlobal[$key]['output']) ? (bool) $resGlobal[$key]['output'] : false;
-            $potencia = isset($resGlobal[$key]['apower']) ? (float) $resGlobal[$key]['apower'] : 0.0;
-            $voltaje = isset($resGlobal[$key]['voltage']) ? (float) $resGlobal[$key]['voltage'] : null;
+    foreach ($canales as $c) {
+        $sw = $res["switch:{$c}"] ?? [];
+        $salida = !empty($sw['output']);
+        $potencia = (float)($sw['apower'] ?? 0.0);
+        $voltaje = isset($sw['voltage']) ? (float)$sw['voltage'] : null;
 
-            $potenciaTotal += $potencia;
-            if ($voltaje !== null && $voltaje > 0) {
-                $voltajePromedio += $voltaje;
-                $voltajesValidos++;
-            }
-
-            $canalesEstado[] = [
-                'canal' => $c,
-                'nombre' => "Canal $c",
-                'output' => $salida,
-                'apower' => round($potencia, 1),
-                'voltage' => $voltaje !== null ? round($voltaje, 1) : null
-            ];
-
-            if ($salida) {
-                $algunoEncendido = true;
-            } else {
-                $todosEncendidos = false;
-            }
-        }
-    } else {
-        // Fallback por canal individual si Shelly.GetStatus no respondió
-        $errores = 0;
-        foreach ($canales as $c) {
-            $res = llamadaShellyRpc($ip, 'Switch.GetStatus', ['id' => $c]);
-            if (isset($res['error'])) {
-                $errores++;
-                $salida = false;
-                $potencia = 0.0;
-                $voltaje = null;
-            } else {
-                $salida = isset($res['output']) ? (bool) $res['output'] : false;
-                $potencia = isset($res['apower']) ? (float) $res['apower'] : 0.0;
-                $voltaje = isset($res['voltage']) ? (float) $res['voltage'] : null;
-                $potenciaTotal += $potencia;
-                if ($voltaje !== null && $voltaje > 0) {
-                    $voltajePromedio += $voltaje;
-                    $voltajesValidos++;
-                }
-            }
-
-            $canalesEstado[] = [
-                'canal' => $c,
-                'nombre' => "Canal $c",
-                'output' => $salida,
-                'apower' => round($potencia, 1),
-                'voltage' => $voltaje !== null ? round($voltaje, 1) : null
-            ];
-
-            if ($salida) {
-                $algunoEncendido = true;
-            } else {
-                $todosEncendidos = false;
-            }
+        $potenciaTotal += $potencia;
+        if ($voltaje !== null && $voltaje > 0) {
+            $voltajes[] = $voltaje;
         }
 
-        if ($errores === count($canales)) {
-            return [
-                'error' => true,
-                'mensaje' => $resGlobal['mensaje'] ?? 'Dispositivo desconectado'
-            ];
+        $canalesEstado[] = [
+            'canal'   => $c,
+            'output'  => $salida,
+            'apower'  => round($potencia, 1),
+            'voltage' => $voltaje !== null ? round($voltaje, 1) : null
+        ];
+
+        if ($salida) {
+            $algunoEncendido = true;
         }
     }
 
-    $vFinal = $voltajesValidos > 0 ? round($voltajePromedio / $voltajesValidos, 1) : null;
+    $vPromedio = count($voltajes) > 0 ? round(array_sum($voltajes) / count($voltajes), 1) : null;
 
     return [
-        'error' => false,
-        'ip' => $ip,
-        'canales' => $canalesEstado,
+        'error'           => false,
+        'ip'              => $ip,
+        'canales'         => $canalesEstado,
         'algunoEncendido' => $algunoEncendido,
-        'todosEncendidos' => $todosEncendidos,
-        'estadoGlobal' => $algunoEncendido,
-        'potenciaTotal' => round($potenciaTotal, 1),
-        'voltaje' => $vFinal
+        'potenciaTotal'   => round($potenciaTotal, 1),
+        'voltaje'         => $vPromedio
     ];
-}
-
-/**
- * Modifica el estado de los canales en bloque con delay en el servidor si se requiere.
- */
-function cambiarEstadoRele($ip, array $canales, bool $nuevoEstado, int $delayMs = 0)
-{
-    $onStr = $nuevoEstado ? 'true' : 'false';
-    $errores = [];
-
-    foreach ($canales as $idx => $c) {
-        if ($idx > 0 && $delayMs > 0) {
-            usleep($delayMs * 1000);
-        }
-        $res = llamadaShellyRpc($ip, 'Switch.Set', ['id' => $c, 'on' => $onStr]);
-        if (isset($res['error'])) {
-            $errores[] = "Canal $c: " . ($res['mensaje'] ?? 'Error desconocido');
-        }
-    }
-
-    $estadoActualizado = obtenerEstadoRele($ip, $canales);
-    $estadoActualizado['erroresComando'] = $errores;
-
-    return $estadoActualizado;
 }
 
 // ============================================================================
@@ -186,69 +108,27 @@ if (isset($_GET['ajax'])) {
     header('Content-Type: application/json; charset=utf-8');
     $accion = $_GET['accion'] ?? 'status';
 
-    // Acción para cambiar un único canal individualmente (rápido, ultra responsivo)
+    // Conmutar un canal individual (rápido para la secuencia con retardo)
     if ($accion === 'set_channel') {
-        $canal = isset($_GET['canal']) ? (int) $_GET['canal'] : 0;
-        $onParam = $_GET['on'] ?? 'true';
-        $onVal = ($onParam === 'true' || $onParam === '1' || $onParam === 1);
+        $canal = (int)($_GET['canal'] ?? 0);
+        $onVal = in_array($_GET['on'] ?? '', ['true', '1', 1], true);
 
         $res = llamadaShellyRpc($releActivo['ip'], 'Switch.Set', [
             'id' => $canal,
             'on' => $onVal ? 'true' : 'false'
         ]);
 
-        if (isset($res['error'])) {
-            echo json_encode([
-                'error' => true,
-                'mensaje' => "Error al conmutar Canal $canal: " . ($res['mensaje'] ?? 'Error desconocido')
-            ]);
+        if (!empty($res['error'])) {
+            echo json_encode(['error' => true, 'mensaje' => "Error canal $canal: " . ($res['mensaje'] ?? '')]);
             exit;
         }
 
-        // Respuesta ultra rápida directa sin esperar por toda la telemetría
-        echo json_encode([
-            'error' => false,
-            'canal' => $canal,
-            'output' => $onVal
-        ]);
+        echo json_encode(['error' => false, 'canal' => $canal, 'output' => $onVal]);
         exit;
     }
 
-    // Toggle directo con delay opcional
-    if ($accion === 'toggle') {
-        $delayMs = isset($_GET['delay']) ? (int) $_GET['delay'] : 0;
-        $estadoPrevio = obtenerEstadoRele($releActivo['ip'], $releActivo['canales']);
-        if (!empty($estadoPrevio['error'])) {
-            echo json_encode([
-                'error' => true,
-                'mensaje' => 'No se pudo comunicar con el relé: ' . ($estadoPrevio['mensaje'] ?? 'Error de conexión')
-            ]);
-            exit;
-        }
-
-        $objetivo = !($estadoPrevio['algunoEncendido']);
-        $resultado = cambiarEstadoRele($releActivo['ip'], $releActivo['canales'], $objetivo, $delayMs);
-        echo json_encode($resultado);
-        exit;
-    }
-
-    if ($accion === 'on') {
-        $delayMs = isset($_GET['delay']) ? (int) $_GET['delay'] : 0;
-        $resultado = cambiarEstadoRele($releActivo['ip'], $releActivo['canales'], true, $delayMs);
-        echo json_encode($resultado);
-        exit;
-    }
-
-    if ($accion === 'off') {
-        $delayMs = isset($_GET['delay']) ? (int) $_GET['delay'] : 0;
-        $resultado = cambiarEstadoRele($releActivo['ip'], $releActivo['canales'], false, $delayMs);
-        echo json_encode($resultado);
-        exit;
-    }
-
-    // Por defecto: accion = status
-    $resultado = obtenerEstadoRele($releActivo['ip'], $releActivo['canales']);
-    echo json_encode($resultado);
+    // Consulta general de estado
+    echo json_encode(obtenerEstadoRele($releActivo['ip'], $releActivo['canales']));
     exit;
 }
 ?>
@@ -257,18 +137,12 @@ if (isset($_GET['ajax'])) {
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-    <meta name="description"
-          content="Panel simplificado para encender y apagar los 4 canales de Relé Uno en secuencia con retardo progresivo">
-    <title>Panel Simplificado - Encendido/Apagado Secuencial Relé Uno</title>
-    <link rel="preconnect"
-          href="https://fonts.googleapis.com">
-    <link rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
-          rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Panel de control simplificado y secuencial para Relé Uno">
+    <title>Panel Simplificado - <?= htmlspecialchars($releActivo['nombre']) ?></title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-page: #090d16;
@@ -278,23 +152,13 @@ if (isset($_GET['ajax'])) {
             --text-muted: #94a3b8;
             --text-dim: #64748b;
 
-            /* Estado ON - Verde Esmeralda Vibrante */
+            /* Estado ON - Verde Esmeralda */
             --on-emerald: #10b981;
             --on-emerald-dark: #047857;
             --on-glow: rgba(16, 185, 129, 0.38);
-            --on-badge-bg: rgba(16, 185, 129, 0.15);
-            --on-badge-border: rgba(16, 185, 129, 0.35);
 
-            /* Estado OFF - Slate / Indigo */
-            --off-slate: #1e293b;
-            --off-glow: rgba(99, 102, 241, 0.18);
-            --off-badge-bg: rgba(71, 85, 105, 0.2);
-            --off-badge-border: rgba(148, 163, 184, 0.25);
-
-            /* Error / Offline */
+            /* Error */
             --err-red: #ef4444;
-            --err-badge-bg: rgba(239, 68, 68, 0.15);
-            --err-badge-border: rgba(239, 68, 68, 0.35);
         }
 
         * {
@@ -326,7 +190,7 @@ if (isset($_GET['ajax'])) {
             gap: 16px;
         }
 
-        /* Barra superior de navegación y controles */
+        /* Barra de navegación superior */
         .top-nav {
             display: flex;
             justify-content: space-between;
@@ -415,13 +279,8 @@ if (isset($_GET['ajax'])) {
         }
 
         @keyframes spin {
-            from {
-                transform: rotate(0deg);
-            }
-
-            to {
-                transform: rotate(360deg);
-            }
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         /* Tarjeta Principal */
@@ -441,113 +300,31 @@ if (isset($_GET['ajax'])) {
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
 
-
-
         .master-card.is-on {
             border-color: rgba(16, 185, 129, 0.3);
             box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.15), 0 0 0 1px rgba(16, 185, 129, 0.25);
         }
 
-        /* Encabezado del dispositivo */
+        /* Encabezado */
         .device-header {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
-
-        /* .device-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px solid rgba(56, 189, 248, 0.25);
-            color: #38bdf8;
-            font-size: 0.72rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            padding: 4px 10px;
-            border-radius: 9999px;
-            margin-bottom: 8px;
-        } */
 
         .device-title {
             font-size: 1.6rem;
             font-weight: 800;
             color: var(--text-main);
             letter-spacing: -0.02em;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
 
         .device-meta {
             font-family: 'JetBrains Mono', monospace;
             font-size: 0.82rem;
             color: var(--text-dim);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
         }
 
-        /* Insignia de estado general */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            border-radius: 9999px;
-            font-size: 0.8rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            margin-bottom: 22px;
-            transition: all 0.3s ease;
-        }
-
-        .status-badge .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: currentColor;
-        }
-
-        .status-badge.badge-on {
-            background: var(--on-badge-bg);
-            border: 1px solid var(--on-badge-border);
-            color: var(--on-emerald);
-        }
-
-        .status-badge.badge-on .dot {
-            box-shadow: 0 0 10px var(--on-emerald);
-            animation: pulse-dot 1.8s ease-in-out infinite;
-        }
-
-        .status-badge.badge-off {
-            background: var(--off-badge-bg);
-            border: 1px solid var(--off-badge-border);
-            color: var(--text-muted);
-        }
-
-        .status-badge.badge-err {
-            background: var(--err-badge-bg);
-            border: 1px solid var(--err-badge-border);
-            color: var(--err-red);
-        }
-
-        @keyframes pulse-dot {
-
-            0%,
-            100% {
-                transform: scale(1);
-                opacity: 1;
-            }
-
-            50% {
-                transform: scale(1.35);
-                opacity: 0.6;
-            }
-        }
-
-        /* ====================================================================
-           BOTÓN ÚNICO DE ENCENDIDO / APAGADO
-           ==================================================================== */
+        /* Botón de Encendido / Apagado */
         .master-button-wrapper {
             width: 100%;
             margin-bottom: 24px;
@@ -562,16 +339,14 @@ if (isset($_GET['ajax'])) {
             outline: none;
             cursor: pointer;
             border-radius: 20px;
-            padding: 22px 20px;
+            padding: 24px 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 12px;
-            position: relative;
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             user-select: none;
-            -webkit-tap-highlight-color: transparent;
         }
 
         .btn-master:active:not(:disabled) {
@@ -583,12 +358,11 @@ if (isset($_GET['ajax'])) {
             opacity: 0.85;
         }
 
-        /* Estilo Botón cuando está APAGADO (listo para encender en cascada) */
         .btn-master.state-off {
             background: linear-gradient(145deg, #1e293b, #0f172a);
             border: 2px solid rgba(148, 163, 184, 0.25);
             color: var(--text-main);
-            box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.5);
         }
 
         .btn-master.state-off:hover:not(:disabled) {
@@ -603,7 +377,6 @@ if (isset($_GET['ajax'])) {
             color: #94a3b8;
         }
 
-        /* Estilo Botón cuando está ENCENDIDO (listo para apagar en cascada) */
         .btn-master.state-on {
             background: linear-gradient(145deg, #059669, #047857);
             border: 2px solid #34d399;
@@ -613,7 +386,7 @@ if (isset($_GET['ajax'])) {
 
         .btn-master.state-on:hover:not(:disabled) {
             background: linear-gradient(145deg, #10b981, #059669);
-            box-shadow: 0 20px 40px -6px var(--on-glow), 0 0 35px rgba(16, 185, 129, 0.5);
+            box-shadow: 0 20px 40px -6px var(--on-glow);
             transform: translateY(-2px);
         }
 
@@ -621,10 +394,8 @@ if (isset($_GET['ajax'])) {
             background: rgba(255, 255, 255, 0.22);
             border: 2px solid rgba(255, 255, 255, 0.7);
             color: #ffffff;
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.4);
         }
 
-        /* Estilo Botón durante la secuencia en ejecución */
         .btn-master.is-loading {
             background: linear-gradient(145deg, #0f172a, #1e293b);
             border: 2px solid #38bdf8;
@@ -635,10 +406,8 @@ if (isset($_GET['ajax'])) {
         .btn-master.is-loading .power-icon-circle {
             background: rgba(56, 189, 248, 0.15);
             border: 2px solid #38bdf8;
-            color: #38bdf8;
         }
 
-        /* Círculo del icono de energía */
         .power-icon-circle {
             width: 66px;
             height: 66px;
@@ -652,14 +421,8 @@ if (isset($_GET['ajax'])) {
         .power-icon-circle svg {
             width: 32px;
             height: 32px;
-            transition: transform 0.2s ease;
         }
 
-        .btn-master:hover:not(:disabled) .power-icon-circle svg {
-            transform: scale(1.08);
-        }
-
-        /* Textos dentro del botón */
         .btn-label-title {
             font-size: 1.15rem;
             font-weight: 800;
@@ -667,14 +430,6 @@ if (isset($_GET['ajax'])) {
             text-transform: uppercase;
         }
 
-        .btn-label-sub {
-            font-size: 0.78rem;
-            font-weight: 500;
-            opacity: 0.85;
-            letter-spacing: 0.01em;
-        }
-
-        /* Spinner dentro del botón mientras carga */
         .btn-spinner {
             display: none;
             width: 26px;
@@ -693,9 +448,7 @@ if (isset($_GET['ajax'])) {
             display: block;
         }
 
-        /* ====================================================================
-           MONITOR EN VIVO DE LOS 4 CANALES (0, 1, 2, 3)
-           ==================================================================== */
+        /* Monitor de Canales (0, 1, 2, 3) */
         .channels-strip {
             width: 100%;
             background: rgba(15, 23, 42, 0.6);
@@ -704,18 +457,7 @@ if (isset($_GET['ajax'])) {
             padding: 14px 16px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
-        }
-
-        .channels-strip-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.75rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--text-dim);
+            gap: 12px;
         }
 
         .channels-grid {
@@ -740,7 +482,6 @@ if (isset($_GET['ajax'])) {
             font-size: 0.7rem;
             font-weight: 700;
             color: var(--text-dim);
-            letter-spacing: 0.03em;
         }
 
         .channel-pill .ch-status {
@@ -775,32 +516,25 @@ if (isset($_GET['ajax'])) {
             color: #94a3b8;
         }
 
-        /* Resaltado cuando un canal se está conmutando activamente en la secuencia */
         .channel-pill.ch-switching {
             border-color: #38bdf8 !important;
             background: rgba(56, 189, 248, 0.2) !important;
             box-shadow: 0 0 16px rgba(56, 189, 248, 0.55);
-            transform: scale(1.06);
+            transform: scale(1.05);
             animation: pulse-switching 0.5s ease-in-out infinite alternate;
         }
 
         @keyframes pulse-switching {
-            from {
-                border-color: rgba(56, 189, 248, 0.4);
-            }
-
-            to {
-                border-color: #38bdf8;
-            }
+            from { border-color: rgba(56, 189, 248, 0.4); }
+            to { border-color: #38bdf8; }
         }
 
-        /* Telemetría rápida */
+        /* Telemetría */
         .telemetry-row {
             display: flex;
             justify-content: space-around;
             width: 100%;
-            margin-top: 6px;
-            padding-top: 10px;
+            padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.05);
             font-size: 0.78rem;
             color: var(--text-dim);
@@ -812,12 +546,11 @@ if (isset($_GET['ajax'])) {
             font-size: 0.82rem;
         }
 
-        /* Notificación de feedback / avisos */
         .toast-feedback {
             font-size: 0.8rem;
-            margin-top: 10px;
+            color: var(--err-red);
+            margin-top: 8px;
             min-height: 18px;
-            transition: opacity 0.3s ease;
         }
 
         /* Pie de página */
@@ -835,157 +568,78 @@ if (isset($_GET['ajax'])) {
 
 <body>
     <main class="container">
-        <!-- Barra de navegación y controles de retardo -->
-        <nav class="top-nav"
-             aria-label="Navegación del panel">
-            <a href="index.php"
-               class="nav-link"
-               id="link-panel-completo"
-               title="Volver al panel multi-relé">
-                <svg width="16"
-                     height="16"
-                     viewBox="0 0 24 24"
-                     fill="none"
-                     stroke="currentColor"
-                     stroke-width="2"
-                     stroke-linecap="round"
-                     stroke-linejoin="round">
-                    <line x1="19"
-                          y1="12"
-                          x2="5"
-                          y2="12"></line>
+        <!-- Navegación y selector de retardo -->
+        <nav class="top-nav" aria-label="Navegación del panel">
+            <a href="index.php" class="nav-link" id="link-panel-completo" title="Volver al panel multi-relé">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
                 Volver a index.php
             </a>
 
             <div class="nav-actions">
-                <!-- Selector de retardo entre la activación de cada canal -->
-                <div class="delay-control"
-                     title="Retardo entre canal y canal (0 -> 1 -> 2 -> 3)">
-                    <svg width="13"
-                         height="13"
-                         viewBox="0 0 24 24"
-                         fill="none"
-                         stroke="currentColor"
-                         stroke-width="2.5"
-                         stroke-linecap="round"
-                         stroke-linejoin="round">
-                        <circle cx="12"
-                                cy="12"
-                                r="10"></circle>
+                <div class="delay-control" title="Retardo entre canal y canal (0 -> 1 -> 2 -> 3)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
                     <label for="select-delay">Retardo:</label>
-                    <select id="select-delay"
-                            class="delay-select">
+                    <select id="select-delay" class="delay-select">
                         <option value="150">150 ms</option>
                         <option value="300">300 ms</option>
-                        <option value="600"
-                                selected>600 ms</option>
+                        <option value="600" selected>600 ms</option>
                         <option value="800">800 ms</option>
                         <option value="1000">1.0 s</option>
                         <option value="1500">1.5 s</option>
                     </select>
                 </div>
 
-                <button class="refresh-btn"
-                        id="btn-manual-refresh"
-                        onclick="consultarEstado(true)"
-                        title="Refrescar estado ahora">
-                    <svg width="14"
-                         height="14"
-                         viewBox="0 0 24 24"
-                         fill="none"
-                         stroke="currentColor"
-                         stroke-width="2"
-                         stroke-linecap="round"
-                         stroke-linejoin="round">
+                <button class="refresh-btn" id="btn-manual-refresh" onclick="consultarEstado(true)" title="Refrescar estado ahora">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="23 4 23 10 17 10"></polyline>
                         <polyline points="1 20 1 14 7 14"></polyline>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                     </svg>
-                    <span id="txt-refresh-btn">Actualizar</span>
+                    <span>Actualizar</span>
                 </button>
             </div>
         </nav>
 
         <!-- Tarjeta Principal del Relé Uno -->
-        <section class="master-card"
-                 id="card-master-rele">
-            <!-- Encabezado -->
+        <section class="master-card" id="card-master-rele">
             <header class="device-header">
-                <!-- <div class="device-pill">Interfaz Simplificada • Secuencia 0 → 1 → 2 → 3</div> -->
-                <h1 class="device-title"
-                    id="titulo-dispositivo"><?= htmlspecialchars($releActivo['nombre']) ?></h1>
+                <h1 class="device-title" id="titulo-dispositivo"><?= htmlspecialchars($releActivo['nombre']) ?></h1>
                 <div class="device-meta">
-                    <span id="disp-ip">IP: <?= htmlspecialchars($releActivo['ip']) ?></span>
-                    <!-- <span>•</span>
-                    <span id="disp-canales">4 Canales Secuenciales</span> -->
+                    <span>IP: <?= htmlspecialchars($releActivo['ip']) ?></span>
                 </div>
             </header>
 
-            <!-- Badge de Estado Global -->
-            <!-- <div class="status-badge badge-off"
-                 id="badge-estado-global"
-                 role="status"> -->
-            <div>
-                <span class="dot"></span>
-                <span id="txt-estado-global">Consultando estado...</span>
-            </div>
-
-            <!-- UN SOLO BOTÓN PRINCIPAL DE ENCENDIDO / APAGADO -->
+            <!-- Botón Maestro de Encendido / Apagado -->
             <div class="master-button-wrapper">
-                <button type="button"
-                        class="btn-master state-off"
-                        id="btn-master-toggle"
-                        aria-pressed="false"
-                        onclick="conmutarSecuencia()"
-                        disabled>
-                    <div class="power-icon-circle"
-                         id="icon-container-power">
-                        <svg id="icon-master-power"
-                             viewBox="0 0 24 24"
-                             fill="none"
-                             stroke="currentColor"
-                             stroke-width="2.5"
-                             stroke-linecap="round"
-                             stroke-linejoin="round">
+                <button type="button" class="btn-master state-off" id="btn-master-toggle" onclick="conmutarSecuencia()" disabled>
+                    <div class="power-icon-circle">
+                        <svg id="icon-master-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-                            <line x1="12"
-                                  y1="2"
-                                  x2="12"
-                                  y2="12"></line>
+                            <line x1="12" y1="2" x2="12" y2="12"></line>
                         </svg>
-                        <div class="btn-spinner"
-                             id="spinner-master"></div>
+                        <div class="btn-spinner" id="spinner-master"></div>
                     </div>
-                    <span class="btn-label-title"
-                          id="txt-master-action">ENCENDIDO / APAGADO</span>
-                    <span class="btn-label-sub"
-                          id="txt-master-desc"></span>
+                    <span class="btn-label-title" id="txt-master-action">ENCENDIDO / APAGADO</span>
                 </button>
             </div>
 
-            <!-- Monitor individual de los 4 Canales del Relé Uno -->
-            <div class="channels-strip"
-                 id="strip-canales">
-                <div class="channels-strip-header">
-                    <!-- <span>Estado Canales (0, 1, 2, 3)</span> -->
-                    <span id="txt-resumen-canales">Sincronizando...</span>
-                </div>
+            <!-- Monitor de los 4 Canales -->
+            <div class="channels-strip">
                 <div class="channels-grid">
                     <?php foreach ($releActivo['canales'] as $ch): ?>
-                        <div class="channel-pill ch-off"
-                             id="canal-badge-<?= $ch ?>">
+                        <div class="channel-pill ch-off" id="canal-badge-<?= $ch ?>">
                             <span class="ch-name">CH <?= $ch ?></span>
-                            <span class="ch-status"
-                                  id="canal-txt-<?= $ch ?>">---</span>
+                            <span class="ch-status" id="canal-txt-<?= $ch ?>">---</span>
                         </div>
                     <?php endforeach; ?>
                 </div>
 
-                <!-- Telemetría rápida (Potencia total y Tensión promedio) -->
                 <div class="telemetry-row">
                     <div class="telemetry-item">
                         Potencia: <strong id="val-potencia-total">-- W</strong>
@@ -996,10 +650,7 @@ if (isset($_GET['ajax'])) {
                 </div>
             </div>
 
-            <!-- Mensaje de error o aviso -->
-            <div class="toast-feedback"
-                 id="toast-feedback"
-                 aria-live="polite"></div>
+            <div class="toast-feedback" id="toast-feedback" aria-live="polite"></div>
         </section>
 
         <!-- Pie de página -->
@@ -1011,14 +662,10 @@ if (isset($_GET['ajax'])) {
     </main>
 
     <script>
-        // Referencias a los elementos del DOM
+        // Elementos DOM
         const btnMaster = document.getElementById('btn-master-toggle');
         const txtMasterAction = document.getElementById('txt-master-action');
-        const txtMasterDesc = document.getElementById('txt-master-desc');
-        //const badgeGlobal = document.getElementById('badge-estado-global');
-        const txtEstadoGlobal = document.getElementById('txt-estado-global');
         const cardMaster = document.getElementById('card-master-rele');
-        const txtResumenCanales = document.getElementById('txt-resumen-canales');
         const valPotencia = document.getElementById('val-potencia-total');
         const valVoltaje = document.getElementById('val-voltaje');
         const txtLastSync = document.getElementById('txt-last-sync');
@@ -1026,19 +673,14 @@ if (isset($_GET['ajax'])) {
         const btnRefresh = document.getElementById('btn-manual-refresh');
         const selectDelay = document.getElementById('select-delay');
 
-        // Estado local en memoria
-        let estadoActual = {
-            cargando: true,
-            algunoEncendido: false,
-            todosEncendidos: false,
-            canales: []
-        };
-
+        let estadoActual = { algunoEncendido: false, canales: [] };
         let enSecuencia = false;
         let intervaloAutoRefresco = null;
 
+        const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
         /**
-         * Renderiza la interfaz en base a los datos recibidos del Shelly
+         * Actualiza el interfaz con los datos del Shelly
          */
         function renderizarEstado(data) {
             if (!enSecuencia) {
@@ -1047,84 +689,48 @@ if (isset($_GET['ajax'])) {
             }
 
             if (data.error) {
-                // badgeGlobal.className = 'status-badge badge-err';
-                txtEstadoGlobal.textContent = 'DESCONECTADO';
                 cardMaster.classList.remove('is-on');
-
                 if (!enSecuencia) {
                     btnMaster.className = 'btn-master state-off';
-                    btnMaster.setAttribute('aria-pressed', 'false');
                     txtMasterAction.textContent = 'REINTENTAR CONEXIÓN';
-                    txtMasterDesc.textContent = 'Sin respuesta en ' + (data.ip || '192.168.1.79');
                 }
-
-                txtResumenCanales.textContent = 'Sin respuesta';
-                toastFeedback.style.color = 'var(--err-red)';
-                toastFeedback.textContent = data.mensaje || 'Error de conexión con el dispositivo';
+                toastFeedback.textContent = data.mensaje || 'Error de conexión';
                 return;
             }
 
+            toastFeedback.textContent = '';
             estadoActual = data;
             const algunoOn = Boolean(data.algunoEncendido);
-            const todosOn = Boolean(data.todosEncendidos);
 
-            // 1. Actualizar el Botón de Encendido / Apagado
+            // Actualizar botón según el estado
             if (!enSecuencia) {
                 if (algunoOn) {
                     btnMaster.className = 'btn-master state-on';
-                    btnMaster.setAttribute('aria-pressed', 'true');
                     txtMasterAction.textContent = 'APAGAR RELÉ UNO';
-                    // txtMasterDesc.textContent = 'Pulsar para apagar en secuencia: 0 → 1 → 2 → 3';
-                    txtMasterDesc.textContent = '';
                     cardMaster.classList.add('is-on');
-
-                    // badgeGlobal.className = 'status-badge badge-on';
-                    // txtEstadoGlobal.textContent = todosOn ? 'ENCENDIDO (4/4)' : 'PARCIALMENTE ENCENDIDO';
-                    txtEstadoGlobal.textContent = '';
                 } else {
                     btnMaster.className = 'btn-master state-off';
-                    btnMaster.setAttribute('aria-pressed', 'false');
                     txtMasterAction.textContent = 'ENCENDER RELÉ UNO';
-                    //   txtMasterDesc.textContent = 'Pulsar para encender en secuencia: 0 → 1 → 2 → 3';
-                    txtMasterDesc.textContent = '';
                     cardMaster.classList.remove('is-on');
-
-                    // badgeGlobal.className = 'status-badge badge-off';
-                    // txtEstadoGlobal.textContent = 'APAGADO (0/4)';
-                    txtEstadoGlobal.textContent = '';
                 }
             }
 
-            // 2. Actualizar las insignias individuales de los 4 canales
-            let canalesEncendidosCount = 0;
+            // Actualizar píldoras de canales
             if (Array.isArray(data.canales)) {
                 data.canales.forEach(ch => {
                     const pill = document.getElementById('canal-badge-' + ch.canal);
                     const txt = document.getElementById('canal-txt-' + ch.canal);
                     if (pill && txt) {
-                        if (ch.output) {
-                            canalesEncendidosCount++;
-                            pill.className = 'channel-pill ch-on';
-                            txt.textContent = 'ON';
-                        } else {
-                            pill.className = 'channel-pill ch-off';
-                            txt.textContent = 'OFF';
-                        }
+                        pill.className = ch.output ? 'channel-pill ch-on' : 'channel-pill ch-off';
+                        txt.textContent = ch.output ? 'ON' : 'OFF';
                     }
                 });
             }
-            //  txtResumenCanales.textContent = `${canalesEncendidosCount} de 4 activos`;
-            txtResumenCanales.textContent = '';
 
-            // 3. Telemetría (Potencia y Tensión)
-            if (data.potenciaTotal !== undefined) {
-                valPotencia.textContent = data.potenciaTotal + ' W';
-            }
-            if (data.voltaje !== undefined && data.voltaje !== null) {
-                valVoltaje.textContent = data.voltaje + ' V';
-            }
+            // Telemetría
+            if (data.potenciaTotal !== undefined) valPotencia.textContent = data.potenciaTotal + ' W';
+            if (data.voltaje !== undefined && data.voltaje !== null) valVoltaje.textContent = data.voltaje + ' V';
 
-            // 4. Marca de tiempo
             const ahora = new Date();
             txtLastSync.textContent = 'Última sinc: ' + ahora.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
@@ -1134,10 +740,7 @@ if (isset($_GET['ajax'])) {
          */
         async function consultarEstado(mostrarGiro = false) {
             if (enSecuencia) return;
-
-            if (mostrarGiro && btnRefresh) {
-                btnRefresh.classList.add('spinning');
-            }
+            if (mostrarGiro && btnRefresh) btnRefresh.classList.add('spinning');
 
             try {
                 const r = await fetch('panel2.php?ajax=1&accion=status', { cache: 'no-store' });
@@ -1146,29 +749,14 @@ if (isset($_GET['ajax'])) {
                 renderizarEstado(data);
             } catch (err) {
                 console.error('Error al consultar estado:', err);
-                renderizarEstado({
-                    error: true,
-                    mensaje: 'Fallo de comunicación de red: ' + err.message
-                });
+                renderizarEstado({ error: true, mensaje: 'Error de red: ' + err.message });
             } finally {
-                if (btnRefresh) {
-                    btnRefresh.classList.remove('spinning');
-                }
+                if (btnRefresh) btnRefresh.classList.remove('spinning');
             }
         }
 
         /**
-         * Función auxiliar para generar pausas asíncronas precisas
-         */
-        const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-        /**
-         * Ejecuta la secuencia progresiva al activar el botón de Encendido/Apagado:
-         * 1. Canal 0 se activa/desactiva
-         * 2. Tras un pequeño delay, Canal 1 se activa/desactiva
-         * 3. Tras un pequeño delay, Canal 2 se activa/desactiva
-         * 4. Tras un pequeño delay, Canal 3 se activa/desactiva
-         * Mostrando el cambio de estado en vivo de cada canal a medida que sucede.
+         * Ejecuta la conmutación secuencial: Canal 0 -> delay -> Canal 1 -> delay -> Canal 2 -> delay -> Canal 3
          */
         async function conmutarSecuencia() {
             if (enSecuencia || btnMaster.disabled) return;
@@ -1178,9 +766,7 @@ if (isset($_GET['ajax'])) {
             btnMaster.classList.add('is-loading');
             toastFeedback.textContent = '';
 
-            // Si al menos un canal está encendido, el objetivo es apagarlos todos (false).
-            // Si todos están apagados, el objetivo es encenderlos todos (true).
-            const targetOn = !(estadoActual && estadoActual.algunoEncendido);
+            const targetOn = !estadoActual.algunoEncendido;
             const accionVerbo = targetOn ? 'ENCENDIENDO' : 'APAGANDO';
             const canales = [0, 1, 2, 3];
             const delayMs = parseInt(selectDelay.value, 10) || 600;
@@ -1191,71 +777,38 @@ if (isset($_GET['ajax'])) {
                     const pill = document.getElementById('canal-badge-' + ch);
                     const txt = document.getElementById('canal-txt-' + ch);
 
-                    // 1. Mostrar estado del paso en el botón y resaltar el canal en conmutación
-                    // txtMasterAction.textContent = `${accionVerbo} CANAL ${ch}...`;
                     txtMasterAction.textContent = `${accionVerbo}...`;
-                    // txtMasterDesc.textContent = `Paso ${i + 1} de 4 (${delayMs} ms de retardo)`;
-                    txtMasterDesc.textContent = '';
-                    if (pill) {
-                        pill.classList.add('ch-switching');
-                    }
+                    if (pill) pill.classList.add('ch-switching');
 
-                    // 2. Enviar orden RPC rápida al Shelly para el canal actual
+                    // Llamada directa al canal
                     const url = `panel2.php?ajax=1&accion=set_channel&canal=${ch}&on=${targetOn ? 'true' : 'false'}`;
                     const resp = await fetch(url, { cache: 'no-store' });
-                    if (!resp.ok) {
-                        throw new Error(`HTTP ${resp.status} al conmutar canal ${ch}`);
-                    }
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status} en canal ${ch}`);
                     const data = await resp.json();
-                    if (data.error) {
-                        throw new Error(data.mensaje || `Error en canal ${ch}`);
-                    }
+                    if (data.error) throw new Error(data.mensaje || `Error en canal ${ch}`);
 
-                    // 3. ACTUALIZAR DE INMEDIATO EN PANTALLA EL ESTADO DEL CANAL TRAS CAMBIAR
+                    // Actualización visual inmediata
                     if (pill) {
                         pill.classList.remove('ch-switching');
                         pill.className = targetOn ? 'channel-pill ch-on' : 'channel-pill ch-off';
                     }
-                    if (txt) {
-                        txt.textContent = targetOn ? 'ON' : 'OFF';
-                    }
-
-                    // Actualizar el contador de canales activos en pantalla en tiempo real
-                    const activos = document.querySelectorAll('.channel-pill.ch-on').length;
-                    //  txtResumenCanales.textContent = `${activos} de 4 activos`;
-                    txtResumenCanales.textContent = '';
-                    // badgeGlobal.className = activos > 0 ? 'status-badge badge-on' : 'status-badge badge-off';
-                    // txtEstadoGlobal.textContent = activos === 4 ? 'ENCENDIDO (4/4)' : (activos > 0 ? `CAMBIANDO (${activos}/4)` : 'APAGADO (0/4)');
-                    txtEstadoGlobal.textContent = '';
+                    if (txt) txt.textContent = targetOn ? 'ON' : 'OFF';
 
                     if (targetOn) {
                         cardMaster.classList.add('is-on');
-                    } else if (activos === 0) {
+                    } else if (i === canales.length - 1) {
                         cardMaster.classList.remove('is-on');
                     }
 
-                    // 4. ESPERAR EL DELAY ANTES DE ACTIVAR/DESACTIVAR EL SIGUIENTE CANAL
+                    // Esperar el retardo antes del siguiente canal
                     if (i < canales.length - 1) {
                         await esperar(delayMs);
                     }
                 }
-
-                // Notificación visual de éxito tras completar los 4 canales
-                // toastFeedback.style.color = '#34d399';
-                //  toastFeedback.textContent = `✓ Los 4 canales se han ${targetOn ? 'activado' : 'desactivado'} en secuencia (0 → 1 → 2 → 3).`;
-                // toastFeedback.textContent = '';
-                // setTimeout(() => {
-                //     if (toastFeedback.style.color === 'rgb(52, 211, 153)') {
-                //         toastFeedback.textContent = '';
-                //     }
-                // }, 4000);
-
             } catch (err) {
-                console.error('Error durante la secuencia de conmutación:', err);
-                toastFeedback.style.color = 'var(--err-red)';
+                console.error('Error en la secuencia:', err);
                 toastFeedback.textContent = 'Error: ' + err.message;
             } finally {
-                // Limpiar posibles estilos residuales y sincronizar telemetría completa
                 canales.forEach(ch => {
                     const p = document.getElementById('canal-badge-' + ch);
                     if (p) p.classList.remove('ch-switching');
@@ -1268,8 +821,6 @@ if (isset($_GET['ajax'])) {
         // Inicialización y auto-refresco
         document.addEventListener('DOMContentLoaded', () => {
             consultarEstado();
-
-            // Refresco periódico cada 5 segundos si no hay secuencia activa ni pestaña oculta
             intervaloAutoRefresco = setInterval(() => {
                 if (!document.hidden && !enSecuencia) {
                     consultarEstado(false);
