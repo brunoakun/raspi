@@ -926,9 +926,10 @@ if (isset($_GET['ajax'])) {
             </header>
 
             <!-- Badge de Estado Global -->
-            <div class="status-badge badge-off"
+            <!-- <div class="status-badge badge-off"
                  id="badge-estado-global"
-                 role="status">
+                 role="status"> -->
+            <div>
                 <span class="dot"></span>
                 <span id="txt-estado-global">Consultando estado...</span>
             </div>
@@ -1014,7 +1015,7 @@ if (isset($_GET['ajax'])) {
         const btnMaster = document.getElementById('btn-master-toggle');
         const txtMasterAction = document.getElementById('txt-master-action');
         const txtMasterDesc = document.getElementById('txt-master-desc');
-        const badgeGlobal = document.getElementById('badge-estado-global');
+        //const badgeGlobal = document.getElementById('badge-estado-global');
         const txtEstadoGlobal = document.getElementById('txt-estado-global');
         const cardMaster = document.getElementById('card-master-rele');
         const txtResumenCanales = document.getElementById('txt-resumen-canales');
@@ -1046,7 +1047,7 @@ if (isset($_GET['ajax'])) {
             }
 
             if (data.error) {
-                badgeGlobal.className = 'status-badge badge-err';
+                // badgeGlobal.className = 'status-badge badge-err';
                 txtEstadoGlobal.textContent = 'DESCONECTADO';
                 cardMaster.classList.remove('is-on');
 
@@ -1077,8 +1078,9 @@ if (isset($_GET['ajax'])) {
                     txtMasterDesc.textContent = '';
                     cardMaster.classList.add('is-on');
 
-                    badgeGlobal.className = 'status-badge badge-on';
-                    txtEstadoGlobal.textContent = todosOn ? 'ENCENDIDO (4/4)' : 'PARCIALMENTE ENCENDIDO';
+                    // badgeGlobal.className = 'status-badge badge-on';
+                    // txtEstadoGlobal.textContent = todosOn ? 'ENCENDIDO (4/4)' : 'PARCIALMENTE ENCENDIDO';
+                    txtEstadoGlobal.textContent = '';
                 } else {
                     btnMaster.className = 'btn-master state-off';
                     btnMaster.setAttribute('aria-pressed', 'false');
@@ -1087,8 +1089,9 @@ if (isset($_GET['ajax'])) {
                     txtMasterDesc.textContent = '';
                     cardMaster.classList.remove('is-on');
 
-                    badgeGlobal.className = 'status-badge badge-off';
-                    txtEstadoGlobal.textContent = 'APAGADO (0/4)';
+                    // badgeGlobal.className = 'status-badge badge-off';
+                    // txtEstadoGlobal.textContent = 'APAGADO (0/4)';
+                    txtEstadoGlobal.textContent = '';
                 }
             }
 
@@ -1110,7 +1113,8 @@ if (isset($_GET['ajax'])) {
                     }
                 });
             }
-            txtResumenCanales.textContent = `${canalesEncendidosCount} de 4 activos`;
+            //  txtResumenCanales.textContent = `${canalesEncendidosCount} de 4 activos`;
+            txtResumenCanales.textContent = '';
 
             // 3. Telemetría (Potencia y Tensión)
             if (data.potenciaTotal !== undefined) {
@@ -1188,7 +1192,8 @@ if (isset($_GET['ajax'])) {
                     const txt = document.getElementById('canal-txt-' + ch);
 
                     // 1. Mostrar estado del paso en el botón y resaltar el canal en conmutación
-                    txtMasterAction.textContent = `${accionVerbo} CANAL ${ch}...`;
+                    // txtMasterAction.textContent = `${accionVerbo} CANAL ${ch}...`;
+                    txtMasterAction.textContent = `${accionVerbo}...`;
                     // txtMasterDesc.textContent = `Paso ${i + 1} de 4 (${delayMs} ms de retardo)`;
                     txtMasterDesc.textContent = '';
                     if (pill) {
@@ -1219,8 +1224,9 @@ if (isset($_GET['ajax'])) {
                     const activos = document.querySelectorAll('.channel-pill.ch-on').length;
                     //  txtResumenCanales.textContent = `${activos} de 4 activos`;
                     txtResumenCanales.textContent = '';
-                    badgeGlobal.className = activos > 0 ? 'status-badge badge-on' : 'status-badge badge-off';
-                    txtEstadoGlobal.textContent = activos === 4 ? 'ENCENDIDO (4/4)' : (activos > 0 ? `CAMBIANDO (${activos}/4)` : 'APAGADO (0/4)');
+                    // badgeGlobal.className = activos > 0 ? 'status-badge badge-on' : 'status-badge badge-off';
+                    // txtEstadoGlobal.textContent = activos === 4 ? 'ENCENDIDO (4/4)' : (activos > 0 ? `CAMBIANDO (${activos}/4)` : 'APAGADO (0/4)');
+                    txtEstadoGlobal.textContent = '';
 
                     if (targetOn) {
                         cardMaster.classList.add('is-on');
