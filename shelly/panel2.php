@@ -441,16 +441,7 @@ if (isset($_GET['ajax'])) {
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
         }
 
-        .master-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #38bdf8, #10b981, #6366f1);
-            opacity: 0.8;
-        }
+
 
         .master-card.is-on {
             border-color: rgba(16, 185, 129, 0.3);
@@ -929,8 +920,8 @@ if (isset($_GET['ajax'])) {
                     id="titulo-dispositivo"><?= htmlspecialchars($releActivo['nombre']) ?></h1>
                 <div class="device-meta">
                     <span id="disp-ip">IP: <?= htmlspecialchars($releActivo['ip']) ?></span>
-                    <span>•</span>
-                    <span id="disp-canales">4 Canales Secuenciales</span>
+                    <!-- <span>•</span>
+                    <span id="disp-canales">4 Canales Secuenciales</span> -->
                 </div>
             </header>
 
@@ -1237,20 +1228,21 @@ if (isset($_GET['ajax'])) {
                         cardMaster.classList.remove('is-on');
                     }
 
-                    // 4. ESPERAR EL PEQUEÑO DELAY ANTES DE ACTIVAR/DESACTIVAR EL SIGUIENTE CANAL
+                    // 4. ESPERAR EL DELAY ANTES DE ACTIVAR/DESACTIVAR EL SIGUIENTE CANAL
                     if (i < canales.length - 1) {
                         await esperar(delayMs);
                     }
                 }
 
                 // Notificación visual de éxito tras completar los 4 canales
-                toastFeedback.style.color = '#34d399';
-                toastFeedback.textContent = `✓ Los 4 canales se han ${targetOn ? 'activado' : 'desactivado'} en secuencia (0 → 1 → 2 → 3).`;
-                setTimeout(() => {
-                    if (toastFeedback.style.color === 'rgb(52, 211, 153)') {
-                        toastFeedback.textContent = '';
-                    }
-                }, 4000);
+                // toastFeedback.style.color = '#34d399';
+                //  toastFeedback.textContent = `✓ Los 4 canales se han ${targetOn ? 'activado' : 'desactivado'} en secuencia (0 → 1 → 2 → 3).`;
+                // toastFeedback.textContent = '';
+                // setTimeout(() => {
+                //     if (toastFeedback.style.color === 'rgb(52, 211, 153)') {
+                //         toastFeedback.textContent = '';
+                //     }
+                // }, 4000);
 
             } catch (err) {
                 console.error('Error durante la secuencia de conmutación:', err);

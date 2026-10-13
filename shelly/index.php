@@ -205,6 +205,7 @@ if (isset($_GET['ajax'])) {
 <body>
     <div class="container">
         <h1>Relés Shelly Locales</h1>
+        <a href="panel2.php">Panel simple</a>
         <?php foreach ($dispositivos as $dev): ?>
             <div class="card"
                  id="card-<?= htmlspecialchars($dev['id']) ?>">
