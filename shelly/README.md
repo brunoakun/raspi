@@ -17,7 +17,7 @@ sudo apt install -y php-curl
 
 
 ================================================================================
-EXPLICACIÓN DETALLADA DEL CÓDIGO (shelly/index.php)
+EXPLICACIÓN DETALLADA DEL CÓDIGO panel.php (shelly/index.php)
 ================================================================================
 
 Este archivo implementa un panel de control web ligero y autónomo para gestionar
