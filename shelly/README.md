@@ -1,4 +1,22 @@
 ================================================================================
+INSTALACIÓN
+================================================================================
+0.- Actualizar el sistema:
+sudo apt update && sudo apt upgrade -y
+
+1.- Instalar Servidor web: 	nginx
+sudo apt update && sudo apt install nginx
+
+2.- Instalr PHP:
+sudo apt install -y php-fpm php-cli
+
+3.- Extensión cURL para PHP:
+sudo apt install -y php-curl
+
+
+
+
+================================================================================
 EXPLICACIÓN DETALLADA DEL CÓDIGO (shelly/index.php)
 ================================================================================
 
