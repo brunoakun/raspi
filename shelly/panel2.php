@@ -8,21 +8,37 @@ error_reporting(E_ALL);
  */
 $configuracion = [
     'rele_uno' => [
-        'id'      => 'rele_01',
-        'nombre'  => 'Relé Uno',
-        'ip'      => '192.168.1.79',
+        'id' => 'rele_01',
+        'nombre' => 'Relé Uno',
+        'ip' => '192.168.1.79',
         'canales' => [0, 1, 2, 3]
     ],
     'rele_dos' => [
-        'id'      => 'rele_02',
-        'nombre'  => 'Relé Dos',
-        'ip'      => '192.168.1.80',
+        'id' => 'rele_02',
+        'nombre' => 'Relé Dos',
+        'ip' => '192.168.1.80',
+        'canales' => [0, 1, 2, 3]
+    ],
+    'rele_tres' => [
+        'id' => 'rele_03',
+        'nombre' => 'Relé Tres',
+        'ip' => '192.168.1.81',
+        'canales' => [0, 1, 2, 3]
+    ],
+    'rele_cuatro' => [
+        'id' => 'rele_04',
+        'nombre' => 'Relé Cuatro',
+        'ip' => '192.168.1.82',
         'canales' => [0, 1, 2, 3]
     ]
 ];
 
 // Relé gestionado por este panel simplificado
-$releActivo = $configuracion['rele_uno'];
+$releKey = $_GET['rele'] ?? 'rele_uno';
+if (!isset($configuracion[$releKey])) {
+    $releKey = 'rele_uno';
+}
+$releActivo = $configuracion[$releKey];
 
 /**
  * Realiza una llamada HTTP RPC a un dispositivo Shelly Gen2+
@@ -36,7 +52,7 @@ function llamadaShellyRpc(string $ip, string $metodo, array $params = []): array
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 3,
+        CURLOPT_TIMEOUT => 3,
         CURLOPT_CONNECTTIMEOUT => 2
     ]);
     $respuesta = curl_exec($ch);
@@ -69,8 +85,8 @@ function obtenerEstadoRele(string $ip, array $canales): array
     foreach ($canales as $c) {
         $sw = $res["switch:{$c}"] ?? [];
         $salida = !empty($sw['output']);
-        $potencia = (float)($sw['apower'] ?? 0.0);
-        $voltaje = isset($sw['voltage']) ? (float)$sw['voltage'] : null;
+        $potencia = (float) ($sw['apower'] ?? 0.0);
+        $voltaje = isset($sw['voltage']) ? (float) $sw['voltage'] : null;
 
         $potenciaTotal += $potencia;
         if ($voltaje !== null && $voltaje > 0) {
@@ -78,9 +94,9 @@ function obtenerEstadoRele(string $ip, array $canales): array
         }
 
         $canalesEstado[] = [
-            'canal'   => $c,
-            'output'  => $salida,
-            'apower'  => round($potencia, 1),
+            'canal' => $c,
+            'output' => $salida,
+            'apower' => round($potencia, 1),
             'voltage' => $voltaje !== null ? round($voltaje, 1) : null
         ];
 
@@ -92,12 +108,12 @@ function obtenerEstadoRele(string $ip, array $canales): array
     $vPromedio = count($voltajes) > 0 ? round(array_sum($voltajes) / count($voltajes), 1) : null;
 
     return [
-        'error'           => false,
-        'ip'              => $ip,
-        'canales'         => $canalesEstado,
+        'error' => false,
+        'ip' => $ip,
+        'canales' => $canalesEstado,
         'algunoEncendido' => $algunoEncendido,
-        'potenciaTotal'   => round($potenciaTotal, 1),
-        'voltaje'         => $vPromedio
+        'potenciaTotal' => round($potenciaTotal, 1),
+        'voltaje' => $vPromedio
     ];
 }
 
@@ -110,7 +126,7 @@ if (isset($_GET['ajax'])) {
 
     // Conmutar un canal individual (rápido para la secuencia con retardo)
     if ($accion === 'set_channel') {
-        $canal = (int)($_GET['canal'] ?? 0);
+        $canal = (int) ($_GET['canal'] ?? 0);
         $onVal = in_array($_GET['on'] ?? '', ['true', '1', 1], true);
 
         $res = llamadaShellyRpc($releActivo['ip'], 'Switch.Set', [
@@ -137,12 +153,26 @@ if (isset($_GET['ajax'])) {
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Panel de control simplificado y secuencial para Relé Uno">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+          content="Panel de control simplificado y secuencial para Relé Uno">
     <title>Panel Simplificado - <?= htmlspecialchars($releActivo['nombre']) ?></title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <script>
+        function changeRelay(select) {
+            const rele = select.value;
+            const url = new URL(window.location);
+            url.searchParams.set('rele', rele);
+            window.location = url.toString();
+        }
+    </script>
+    <link rel="preconnect"
+          href="https://fonts.googleapis.com">
+    <link rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
+          rel="stylesheet">
     <style>
         :root {
             --bg-page: #090d16;
@@ -279,8 +309,13 @@ if (isset($_GET['ajax'])) {
         }
 
         @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         /* Tarjeta Principal */
@@ -525,8 +560,13 @@ if (isset($_GET['ajax'])) {
         }
 
         @keyframes pulse-switching {
-            from { border-color: rgba(56, 189, 248, 0.4); }
-            to { border-color: #38bdf8; }
+            from {
+                border-color: rgba(56, 189, 248, 0.4);
+            }
+
+            to {
+                border-color: #38bdf8;
+            }
         }
 
         /* Telemetría */
@@ -569,34 +609,70 @@ if (isset($_GET['ajax'])) {
 <body>
     <main class="container">
         <!-- Navegación y selector de retardo -->
-        <nav class="top-nav" aria-label="Navegación del panel">
-            <a href="index.php" class="nav-link" id="link-panel-completo" title="Volver al panel multi-relé">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="19" y1="12" x2="5" y2="12"></line>
+        <nav class="top-nav"
+             aria-label="Navegación del panel">
+            <a href="index.php"
+               class="nav-link"
+               id="link-panel-completo"
+               title="Volver al panel multi-relé">
+                <svg width="16"
+                     height="16"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round">
+                    <line x1="19"
+                          y1="12"
+                          x2="5"
+                          y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
                 Volver a index.php
             </a>
 
             <div class="nav-actions">
-                <div class="delay-control" title="Retardo entre canal y canal (0 -> 1 -> 2 -> 3)">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
+                <div class="delay-control"
+                     title="Retardo entre canal y canal (0 -> 1 -> 2 -> 3)">
+                    <svg width="13"
+                         height="13"
+                         viewBox="0 0 24 24"
+                         fill="none"
+                         stroke="currentColor"
+                         stroke-width="2.5"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
+                        <circle cx="12"
+                                cy="12"
+                                r="10"></circle>
                         <polyline points="12 6 12 12 16 14"></polyline>
                     </svg>
                     <label for="select-delay">Retardo:</label>
-                    <select id="select-delay" class="delay-select">
+                    <select id="select-delay"
+                            class="delay-select">
                         <option value="150">150 ms</option>
                         <option value="300">300 ms</option>
-                        <option value="600" selected>600 ms</option>
+                        <option value="600"
+                                selected>600 ms</option>
                         <option value="800">800 ms</option>
                         <option value="1000">1.0 s</option>
                         <option value="1500">1.5 s</option>
                     </select>
                 </div>
 
-                <button class="refresh-btn" id="btn-manual-refresh" onclick="consultarEstado(true)" title="Refrescar estado ahora">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <button class="refresh-btn"
+                        id="btn-manual-refresh"
+                        onclick="consultarEstado(true)"
+                        title="Refrescar estado ahora">
+                    <svg width="14"
+                         height="14"
+                         viewBox="0 0 24 24"
+                         fill="none"
+                         stroke="currentColor"
+                         stroke-width="2"
+                         stroke-linecap="round"
+                         stroke-linejoin="round">
                         <polyline points="23 4 23 10 17 10"></polyline>
                         <polyline points="1 20 1 14 7 14"></polyline>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -607,9 +683,11 @@ if (isset($_GET['ajax'])) {
         </nav>
 
         <!-- Tarjeta Principal del Relé Uno -->
-        <section class="master-card" id="card-master-rele">
+        <section class="master-card"
+                 id="card-master-rele">
             <header class="device-header">
-                <h1 class="device-title" id="titulo-dispositivo"><?= htmlspecialchars($releActivo['nombre']) ?></h1>
+                <h1 class="device-title"
+                    id="titulo-dispositivo"><?= htmlspecialchars($releActivo['nombre']) ?></h1>
                 <div class="device-meta">
                     <span>IP: <?= htmlspecialchars($releActivo['ip']) ?></span>
                 </div>
@@ -617,15 +695,30 @@ if (isset($_GET['ajax'])) {
 
             <!-- Botón Maestro de Encendido / Apagado -->
             <div class="master-button-wrapper">
-                <button type="button" class="btn-master state-off" id="btn-master-toggle" onclick="conmutarSecuencia()" disabled>
+                <button type="button"
+                        class="btn-master state-off"
+                        id="btn-master-toggle"
+                        onclick="conmutarSecuencia()"
+                        disabled>
                     <div class="power-icon-circle">
-                        <svg id="icon-master-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <svg id="icon-master-power"
+                             viewBox="0 0 24 24"
+                             fill="none"
+                             stroke="currentColor"
+                             stroke-width="2.5"
+                             stroke-linecap="round"
+                             stroke-linejoin="round">
                             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-                            <line x1="12" y1="2" x2="12" y2="12"></line>
+                            <line x1="12"
+                                  y1="2"
+                                  x2="12"
+                                  y2="12"></line>
                         </svg>
-                        <div class="btn-spinner" id="spinner-master"></div>
+                        <div class="btn-spinner"
+                             id="spinner-master"></div>
                     </div>
-                    <span class="btn-label-title" id="txt-master-action">ENCENDIDO / APAGADO</span>
+                    <span class="btn-label-title"
+                          id="txt-master-action">ENCENDIDO / APAGADO</span>
                 </button>
             </div>
 
@@ -633,9 +726,11 @@ if (isset($_GET['ajax'])) {
             <div class="channels-strip">
                 <div class="channels-grid">
                     <?php foreach ($releActivo['canales'] as $ch): ?>
-                        <div class="channel-pill ch-off" id="canal-badge-<?= $ch ?>">
+                        <div class="channel-pill ch-off"
+                             id="canal-badge-<?= $ch ?>">
                             <span class="ch-name">CH <?= $ch ?></span>
-                            <span class="ch-status" id="canal-txt-<?= $ch ?>">---</span>
+                            <span class="ch-status"
+                                  id="canal-txt-<?= $ch ?>">---</span>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -650,7 +745,9 @@ if (isset($_GET['ajax'])) {
                 </div>
             </div>
 
-            <div class="toast-feedback" id="toast-feedback" aria-live="polite"></div>
+            <div class="toast-feedback"
+                 id="toast-feedback"
+                 aria-live="polite"></div>
         </section>
 
         <!-- Pie de página -->
