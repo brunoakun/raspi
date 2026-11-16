@@ -13,7 +13,7 @@ $configuracion = [
         'nombre' => 'Relé Uno',
         'ip' => '192.168.1.79',
         'canales' => [0, 1, 2, 3],
-        'canal_nombre' => ['luz01', 'Luz Salón', 'luz03', 'luz04']
+        'canal_nombre' => ['Luz pasillo', 'Luz Salón', 'luz03', 'luz04']
     ],
     'rele_dos' => [
         'id' => 'rele_02',
@@ -255,14 +255,19 @@ if (isset($_GET['ajax'])) {
 <body>
     <div class="container">
         <div class="actions-bar">
-            <button id="toggleAll" class="btn-action">
+            <button id="toggleAll"
+                    class="btn-action">
                 <svg viewBox="0 0 24 24">
                     <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-                    <line x1="12" y1="2" x2="12" y2="12"></line>
+                    <line x1="12"
+                          y1="2"
+                          x2="12"
+                          y2="12"></line>
                 </svg>
                 <span>Encender / Apagar Todo</span>
             </button>
-            <button id="btnLimpieza" class="btn-action">
+            <button id="btnLimpieza"
+                    class="btn-action">
                 <svg viewBox="0 0 24 24">
                     <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path>
                 </svg>
@@ -346,7 +351,7 @@ if (isset($_GET['ajax'])) {
                     b.classList.add('off', 'err');
                     b.querySelector('.state').textContent = 'Error';
                 }
-                await new Promise(r => setTimeout(r, <?= (int)$delay ?>)); // ms delay entre canales
+                await new Promise(r => setTimeout(r, <?= (int) $delay ?>)); // ms delay entre canales
             }
         });
         // Botón Limpieza (Relé 1, Canal 0 sin delay)
