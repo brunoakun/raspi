@@ -13,7 +13,7 @@ $configuracion = [
         'nombre' => 'Relé Uno',
         'ip' => '192.168.1.79',
         'canales' => [0, 1, 2, 3],
-        'canal_nombre' => ['Luz pasillo', 'Luz Salón', 'luz03', 'luz04']
+        'canal_nombre' => ['Luz01', 'Luz02', 'luz03', 'luz04']
     ],
     'rele_dos' => [
         'id' => 'rele_02',
